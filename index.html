@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Oli Vagau Aviyan</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Orbitron:wght@700&display=swap');
+        
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Orbitron', sans-serif; touch-action: none; }
+        
+        /* Lobby Styles */
+        #lobby {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; z-index: 3000; transition: opacity 0.5s;
+        }
+        #lobby h1 { 
+            font-family: 'Bangers', bold; font-size: 60px; color: #ffeb3b; 
+            margin: 0; text-shadow: 5px 5px 0 #000000; letter-spacing: 3px;
+        }
+        #lobby p { color: white; font-size: 18px; margin-bottom: 40px; letter-spacing: 5px; opacity: 0.8; }
+        
+        #start-btn {
+            background: #4caf50; color: white; border: none; padding: 20px 60px;
+            font-size: 30px; cursor: pointer; border-radius: 50px; font-family: 'Bangers';
+            box-shadow: 0 8px 0 #2e7d32; transition: 0.2s;
+        }
+        #start-btn:active { transform: translateY(4px); box-shadow: 0 4px 0 #2e7d32; }
+
+        /* Game UI */
+        #ui {
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: white; font-size: 24px; text-shadow: 2px 2px #000; pointer-events: none;
+            display: none;
+        }
+
+        #notification {
+            position: absolute; top: 25%; width: 100%; text-align: center;
+            color: #ffeb3b; font-size: 60px; font-family: 'Bangers', cursive;
+            text-shadow: 0 0 20px #ff9800; display: none; z-index: 100;
+        }
+
+        #game-over-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95); display: none; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 2000; text-align: center;
+        }
+        #game-over-screen h1 { font-family: 'Bangers'; font-size: 90px; color: #f44336; margin: 0; }
+        #gain-msg { font-family: 'Bangers'; font-size: 50px; color: #4caf50; margin: 10px 0; }
+        #restart-btn {
+            background: #ff9800; color: white; border: none; padding: 15px 50px;
+            font-size: 30px; cursor: pointer; border-radius: 10px; margin-top: 30px;
+            font-family: 'Bangers'; box-shadow: 0 5px 0 #e65100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="lobby">
+        <h1>OLI VAGAU AVIYAN</h1>
+        <p>MADE BY AVISHEK</p>
+        <button id="start-btn">START MISSION</button>
+    </div>
+
+    <div id="ui">SCORE: <span id="score">0</span> | 🌞: <span id="sun-count">0</span></div>
+    <div id="notification">GAINED 10 VOTES!</div>
+
+    <div id="game-over-screen">
+        <h1>GAME OVER</h1>
+        <div id="gain-msg">KP OLI GAIN 0 VOTES</div>
+        <button id="restart-btn">RETRY AVIYAN</button>
+    </div>
+
+    <script type="importmap">
+        { 
+            "imports": { 
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            } 
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        const LANES = [-4.5, 0, 4.5];
+        let currentLane = 1, score = 0, sunCollected = 0;
+        let gameActive = false, playerModel, mixer, isJumping = false, jumpVel = 0;
+        const obstacles = [], suns = [];
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        sunLight.position.set(10, 20, 10);
+        sunLight.castShadow = true;
+        scene.add(sunLight);
+
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(20, 2000), new THREE.MeshStandardMaterial({ color: 0x444444 }));
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // --- LOADING ASSETS ---
+        const loader = new GLTFLoader();
+        loader.load('./model.glb', (gltf) => {
+            playerModel = gltf.scene;
+            playerModel.scale.set(1.5, 1.5, 1.5);
+            playerModel.traverse(c => { if(c.isMesh) c.castShadow = true; });
+            if (gltf.animations.length > 0) {
+                mixer = new THREE.AnimationMixer(playerModel);
+                mixer.clipAction(gltf.animations[0]).play();
+            }
+            scene.add(playerModel);
+        });
+
+        // --- START GAME LOGIC ---
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('lobby').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('lobby').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                gameActive = true;
+            }, 500);
+        });
+
+        // --- FACTORIES (🔔🌳⚒️🌞) ---
+        function createSun() {
+            const group = new THREE.Group();
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), 
+                new THREE.MeshStandardMaterial({ color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 2.5 }));
+            group.add(core);
+            return group;
+        }
+
+        function createObstacle() {
+            const types = [createBell, createTree, createHammer];
+            return types[Math.floor(Math.random() * types.length)]();
+        }
+
+        function createBell() {
+            const g = new THREE.Group();
+            g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1, 1.5), new THREE.MeshStandardMaterial({color: 0xffd700})));
+            return g;
+        }
+
+        function createTree() {
+            const g = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1), new THREE.MeshStandardMaterial({color: 0x5d4037}));
+            const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3), new THREE.MeshStandardMaterial({color: 0x2e7d32}));
+            leaves.position.y = 1.5;
+            g.add(trunk, leaves);
+            return g;
+        }
+
+        function createHammer() {
+            const g = new THREE.Group();
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2), new THREE.MeshStandardMaterial({color: 0x444}));
+            const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 0.6), new THREE.MeshStandardMaterial({color: 0x888}));
+            head.position.y = 0.8;
+            g.add(handle, head);
+            g.rotation.z = Math.PI/4;
+            return g;
+        }
+
+        function spawn() {
+            if (!gameActive) return;
+            const lane = Math.floor(Math.random() * 3);
+            if (Math.random() > 0.45) {
+                const obs = createObstacle();
+                obs.position.set(LANES[lane], 0.7, -120);
+                scene.add(obs);
+                obstacles.push(obs);
+            } else {
+                const s = createSun();
+                s.position.set(LANES[lane], 1.5, -120);
+                scene.add(s);
+                suns.push(s);
+            }
+        }
+        setInterval(spawn, 800);
+
+        // --- INPUTS ---
+        let startX, startY;
+        window.addEventListener('touchstart', e => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; });
+        window.addEventListener('touchend', e => {
+            const dx = e.changedTouches[0].clientX - startX;
+            const dy = e.changedTouches[0].clientY - startY;
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 30 && currentLane < 2) currentLane++;
+                else if (dx < -30 && currentLane > 0) currentLane--;
+            } else if (dy < -30 && !isJumping) { isJumping = true; jumpVel = 0.35; }
+        });
+
+        document.getElementById('restart-btn').addEventListener('click', () => location.reload());
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+
+            if (gameActive) {
+                if (playerModel) {
+                    playerModel.position.x = THREE.MathUtils.lerp(playerModel.position.x, LANES[currentLane], 0.18);
+                    if (isJumping) {
+                        playerModel.position.y += jumpVel;
+                        jumpVel -= 0.018;
+                        if (playerModel.position.y <= 0) { playerModel.position.y = 0; isJumping = false; }
+                    }
+                    camera.position.x = THREE.MathUtils.lerp(camera.position.x, playerModel.position.x, 0.05);
+                    camera.lookAt(playerModel.position.x, 1, -5);
+                }
+                camera.position.set(camera.position.x, 6, 12);
+
+                const currentSpeed = 0.85 + (score / 10000);
+                const pBox = new THREE.Box3().setFromObject(playerModel || new THREE.Object3D());
+
+                // Suns logic
+                for (let i = suns.length - 1; i >= 0; i--) {
+                    suns[i].position.z += currentSpeed;
+                    if (pBox.intersectsBox(new THREE.Box3().setFromObject(suns[i]))) {
+                        scene.remove(suns[i]);
+                        suns.splice(i, 1);
+                        sunCollected++;
+                        document.getElementById('sun-count').innerText = sunCollected;
+                        if (sunCollected > 0 && sunCollected % 10 === 0) {
+                            const el = document.getElementById('notification');
+                            el.innerText = `GAINED ${sunCollected} VOTES!`;
+                            el.style.display = 'block';
+                            setTimeout(() => { el.style.display = 'none'; }, 1000);
+                        }
+                    }
+                }
+
+                // Obstacles logic
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    obstacles[i].position.z += currentSpeed;
+                    if (pBox.intersectsBox(new THREE.Box3().setFromObject(obstacles[i]))) {
+                        gameActive = false;
+                        document.getElementById('game-over-screen').style.display = 'flex';
+                        document.getElementById('gain-msg').innerText = `KP OLI GAIN ${sunCollected} VOTES`;
+                    }
+                    if (obstacles[i].position.z > 20) {
+                        scene.remove(obstacles[i]);
+                        obstacles.splice(i, 1);
+                    }
+                }
+                score++;
+                document.getElementById('score').innerText = score;
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
